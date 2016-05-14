@@ -67,57 +67,57 @@
 
 (def speed 4)
 
-(defn move [explorer]
-  (let [last-key (first (:pressed-keys explorer))]
+(defn move [character]
+  (let [last-key (first (:pressed-keys character))]
     (if (nil? last-key)
-      (doto explorer
+      (doto character
         (body! :set-linear-velocity 0 0))
       (case last-key
-        :up (doto explorer (body! :set-linear-velocity 0 speed))
-        :down (doto explorer (body! :set-linear-velocity 0 (- speed)))
-        :left (doto explorer (body! :set-linear-velocity (- speed) 0))
-        :right (doto explorer (body! :set-linear-velocity speed 0))
-        explorer))))
+        :up (doto character (body! :set-linear-velocity 0 speed))
+        :down (doto character (body! :set-linear-velocity 0 (- speed)))
+        :left (doto character (body! :set-linear-velocity (- speed) 0))
+        :right (doto character (body! :set-linear-velocity speed 0))
+        character))))
 
-(defn copy-position [explorer body]
+(defn copy-position [character body]
   (let [position (body! body :get-position)
-        [offset-x offset-y] (:physics-offset explorer)
+        [offset-x offset-y] (:physics-offset character)
         x (+ (.-x position) offset-x)
         y (+ (.-y position) offset-y)]
-    (assoc explorer :x x :y y)))
+    (assoc character :x x :y y)))
 
-(defn animate [{:keys [standing walk-left pressed-keys] :as explorer}
+(defn animate [{:keys [standing walk-left pressed-keys] :as character}
                body screen]
-  (-> explorer
+  (-> character
       (copy-position body)
       (merge
        (if (empty? pressed-keys)
          standing
          (animation->texture screen walk-left)))))
 
-(defn set-angle [explorer dir]
+(defn set-angle [character dir]
   (let [new-angle (case dir
                     :left 0
                     :right 180
                     :up 270
                     :down 90
-                    (:angle explorer))]
-    (assoc explorer :angle new-angle)))
+                    (:angle character))]
+    (assoc character :angle new-angle)))
 
 (defn create-character [filename id frames screen debug-texture]
   (let [sheet (texture filename)
         sheet-width (texture! sheet :get-region-width)
         sheet-height (texture! sheet :get-region-height)
         tiles (texture! sheet :split (/ sheet-width frames) sheet-height)
-        explorer-images (for [n (range frames)]
+        character-images (for [n (range frames)]
                           (texture (aget tiles 0 n)))
-        standing (second explorer-images)
+        standing (second character-images)
         physics-offset [(/ (- 1 (entity-width standing)) 2)
                         (/ (- 1 (entity-height standing)) 2)]
         character (assoc standing
                          :id id
                          :standing standing
-                         :walk-left (animation 0.2 explorer-images)
+                         :walk-left (animation 0.2 character-images)
                          :width (entity-width standing)
                          :height (entity-height standing)
                          :character? true
@@ -181,10 +181,14 @@
   :on-render
   (fn [screen entities]
     (clear!)
-    (let [explorer-body (find-first :character-body? entities)
+    (let [all-character-bodies (filter :character-body? entities)
+          character-map (reduce (fn [m b] (assoc m (:id b) b)) {}
+                                all-character-bodies)
           entities (->> (for [entity entities]
-                          (cond (:character? entity) (animate entity explorer-body screen)
-                                (:character-body? entity) (move entity)
+                          (cond (:character? entity)
+                                (animate entity ((:id entity) character-map) screen)
+                                (:character-body? entity)
+                                (move entity)
                                 :else entity))
                         (step! screen))
           visible-entities (filter (complement :invisible?) entities)]
