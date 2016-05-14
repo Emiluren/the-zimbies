@@ -119,7 +119,7 @@
 (defn pick-direction [zombie]
   (let [current-pos (body! zombie :get-position)]
     (assoc zombie
-           :angle (rand-int 360)
+           :direction (rand-int 360)
            :walk-time (rand-int 240))))
 
 (defn can-see-player [zombie explorer]
@@ -156,8 +156,9 @@
         (start-chasing zombie explorer)
 
         (> (:walk-time zombie) 0)
-        (let [xspeed 1
-              yspeed 1]
+        (let [angle (Math/toRadians (:direction zombie))
+              xspeed (Math/cos angle)
+              yspeed (Math/sin angle)]
           (body! zombie :set-linear-velocity xspeed yspeed)
           (update zombie :walk-time dec))
 
@@ -178,7 +179,7 @@
         [zombie-body zombie-animation] (create-character "Zombie_walking_small.png"
                                                          name pos 8 screen debug-img)]
     [(start-idling (assoc zombie-body :zombie? true))
-     zombie-animation
+     (assoc zombie-animation :zombie? true)
      (assoc name-label :zombie-label? true :id name)]))
 
 (defn generate-zombies [screen debug-img]
@@ -207,10 +208,12 @@
 
 (defn animate [{:keys [standing walk-left pressed-keys] :as character}
                body screen]
-  (-> character
+  (-> (if (:zombie? character)
+        (assoc character :angle (- (get body :direction 0) 180))
+        character)
       (copy-position body)
       (merge
-       (if (empty? pressed-keys)
+       (if (.isZero (body! body :get-linear-velocity))
          standing
          (animation->texture screen walk-left)))))
 
