@@ -16,9 +16,14 @@
 
 (def ^:const pixels-per-tile 32)
 
-(def zombie-names ["Joe" "Bob" "Jack" "Mike" "Tom" "Dave" "Paul" "John" "Mark"
-                   "Andrew" "Richard" "Peter" "Susan" "Christine" "Janet" "Margaret"
-                   "Sarah" "Claire" "Mary" "Hannah" "Sophie" "Laura" "Dorothy" "Joyce"])
+(def zombie-names [:Joe :Bob :Jack :Mike :Tom :Dave :Paul :John :Mark
+                   :Andrew :Richard :Peter :Susan :Christine :Janet :Margaret
+                   :Sarah :Claire :Mary :Hannah :Sophie :Laura :Dorothy :Joyce])
+
+(defn spy [v]
+  (println v)
+  (println)
+  v)
 
 (defn create-rect-body!
   [screen width height]
@@ -135,6 +140,18 @@
        (body-position! 3 10 0))
      character]))
 
+(defn set-scale-to-all [textures]
+  (map #(assoc % :width (entity-width %) :height (entity-height %)) textures))
+
+(defn create-name-labels []
+  (zipmap
+   zombie-names
+   (set-scale-to-all
+    (for [n (range 24)]
+      (texture (aget
+                (texture! (texture "names.png") :split 120 25)
+                n 0))))))
+
 (defscreen main-screen
   :on-show
   (fn [screen entities]
@@ -144,13 +161,19 @@
                           :renderer (stage))
           game-w (/ (game :width) pixels-per-tile)
           block-img (texture "Block.gif")
-          sand (texture "ground.png")]
+          sand (texture "ground.png")
+          random-name (first (shuffle zombie-names))
+          name-label (random-name (create-name-labels))
+          zombie (create-character "Zombie_walking_small.png" random-name
+                                   8 screen block-img)]
       (width! screen game-w)
       [(for [x (range 25)
              y (range 15)]
          (assoc sand :width 1 :height 1 :x x :y (+ y 3)))
        (for [[x y] [[3 0] [4 0] [5 0] [6 1] [3 2] [4 2] [6 2] [3 3] [3 4]]]
          (make-block screen x (+ y 3) block-img))
+       zombie
+       name-label
        (create-character "Explorer_walking.png" :explorer 4 screen block-img)]))
 
   :on-key-down
