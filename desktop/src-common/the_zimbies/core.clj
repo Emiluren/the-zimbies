@@ -72,6 +72,120 @@
 
 (def speed 4)
 
+(defn create-character [filename id [posx posy] frames screen debug-texture]
+  (let [sheet (texture filename)
+        sheet-width (texture! sheet :get-region-width)
+        sheet-height (texture! sheet :get-region-height)
+        tiles (texture! sheet :split (/ sheet-width frames) sheet-height)
+        character-images (for [n (range frames)]
+                          (texture (aget tiles 0 n)))
+        standing (second character-images)
+        physics-offset [(/ (- 1 (entity-width standing)) 2)
+                        (/ (- 1 (entity-height standing)) 2)]
+        character (assoc standing
+                         :id id
+                         :standing standing
+                         :walk-left (animation 0.2 character-images)
+                         :width (entity-width standing)
+                         :height (entity-height standing)
+                         :character? true
+                         :pressed-keys ()
+                         :physics-offset physics-offset
+                         :angle 0)
+        character-body (assoc debug-texture
+                              :id id
+                              :character-body? true
+                              :width 1, :height 1,
+                              :character-body? true
+                              :pressed-keys ()
+                              :invisible? true
+                              :body (create-character-body! screen 0.45))]
+    [(doto character-body
+       (body-position! posx posy 0))
+     character]))
+
+(defn set-scale-to-all [textures]
+  (map #(assoc % :width (entity-width %) :height (entity-height %)) textures))
+
+(defn create-name-labels []
+  (zipmap
+   zombie-names
+   (set-scale-to-all
+    (for [n (range 24)]
+      (texture (aget
+                (texture! (texture "names.png") :split 120 25)
+                n 0))))))
+
+(defn pick-direction [zombie]
+  (let [current-pos (body! zombie :get-position)]
+    (assoc zombie
+           :angle (rand-int 360)
+           :walk-time (rand-int 240))))
+
+(defn can-see-player [zombie explorer]
+  false)
+
+(defn start-idling [zombie]
+  ;; Idle for between 0 and 1 second
+  (body! zombie :set-linear-velocity 0 0)
+  (assoc zombie
+         :state :idle
+         :wait-time (rand-int 240)))
+
+(defn start-walking [zombie]
+  (-> zombie
+      (assoc :state :walking)
+      pick-direction))
+
+(defn start-chasing [zombie explorer]
+  (-> zombie
+      (assoc :state :chasing
+             :last-saw-player (body! explorer :get-position))))
+
+(defn process-idle [zombie explorer]
+  (cond (can-see-player zombie explorer)
+        (start-chasing zombie explorer)
+
+        (> (:wait-time zombie) 0)
+        (update zombie :wait-time dec)
+
+        :else (start-walking zombie)))
+
+(defn process-walking [zombie explorer]
+  (cond (can-see-player zombie explorer)
+        (start-chasing zombie explorer)
+
+        (> (:walk-time zombie) 0)
+        (let [xspeed 1
+              yspeed 1]
+          (body! zombie :set-linear-velocity xspeed yspeed)
+          (update zombie :walk-time dec))
+
+        :else (start-idling zombie)))
+
+(defn process-chasing [zombie explorer]
+  zombie)
+
+(defn do-ai [zombie explorer]
+  (case (:state zombie)
+    :idle (process-idle zombie explorer)
+    :walking (process-walking zombie explorer)
+    :chasing (process-chasing zombie explorer)
+    zombie))
+
+(defn create-zombie [name pos screen debug-img]
+  (let [name-label (name (create-name-labels))
+        [zombie-body zombie-animation] (create-character "Zombie_walking_small.png"
+                                                         name pos 8 screen debug-img)]
+    [(start-idling (assoc zombie-body :zombie? true))
+     zombie-animation
+     (assoc name-label :zombie-label? true :id name)]))
+
+(defn generate-zombies [screen debug-img]
+  (for [[pos name] (map vector [[7 7] [16 7] [7 14] [16 14]]
+                        (take 4 (shuffle zombie-names)))]
+    (create-zombie name pos screen debug-img)))
+
 (defn move [character]
   (let [last-key (first (:pressed-keys character))]
     (if (nil? last-key)
@@ -100,6 +214,12 @@
          standing
          (animation->texture screen walk-left)))))
 
+(defn track-label [label body]
+  (let [pos (body! body :get-position)
+        x (.-x pos)
+        y (.-y pos)]
+    (assoc label :x (- x (/ (:width label) 2) -0.3) :y (- y 1))))
+
 (defn set-angle [character dir]
   (let [new-angle (case dir
                     :left 0
@@ -108,49 +228,6 @@
                     :down 90
                     (:angle character))]
     (assoc character :angle new-angle)))
-
-(defn create-character [filename id frames screen debug-texture]
-  (let [sheet (texture filename)
-        sheet-width (texture! sheet :get-region-width)
-        sheet-height (texture! sheet :get-region-height)
-        tiles (texture! sheet :split (/ sheet-width frames) sheet-height)
-        character-images (for [n (range frames)]
-                          (texture (aget tiles 0 n)))
-        standing (second character-images)
-        physics-offset [(/ (- 1 (entity-width standing)) 2)
-                        (/ (- 1 (entity-height standing)) 2)]
-        character (assoc standing
-                         :id id
-                         :standing standing
-                         :walk-left (animation 0.2 character-images)
-                         :width (entity-width standing)
-                         :height (entity-height standing)
-                         :character? true
-                         :pressed-keys ()
-                         :physics-offset physics-offset
-                         :angle 0)]
-    [(doto (assoc debug-texture
-                  :id id
-                  :character-body? true
-                  :width 1, :height 1,
-                  :character-body? true
-                  :pressed-keys ()
-                  :invisible? true
-                  :body (create-character-body! screen 0.45))
-       (body-position! 3 10 0))
-     character]))
-
-(defn set-scale-to-all [textures]
-  (map #(assoc % :width (entity-width %) :height (entity-height %)) textures))
-
-(defn create-name-labels []
-  (zipmap
-   zombie-names
-   (set-scale-to-all
-    (for [n (range 24)]
-      (texture (aget
-                (texture! (texture "names.png") :split 120 25)
-                n 0))))))
 
 (defscreen main-screen
   :on-show
@@ -163,18 +240,16 @@
           block-img (texture "Block.gif")
           sand (texture "ground.png")
           random-name (first (shuffle zombie-names))
-          name-label (random-name (create-name-labels))
-          zombie (create-character "Zombie_walking_small.png" random-name
-                                   8 screen block-img)]
+          ground (for [x (range 25)
+                       y (range 15)]
+                   (assoc sand :width 1 :height 1 :x x :y (+ y 3)))
+          walls (for [[x y] [[3 0] [4 0] [5 0] [6 1] [3 2] [4 2] [6 2] [3 3] [3 4]]]
+                  (make-block screen x (+ y 3) block-img))]
       (width! screen game-w)
-      [(for [x (range 25)
-             y (range 15)]
-         (assoc sand :width 1 :height 1 :x x :y (+ y 3)))
-       (for [[x y] [[3 0] [4 0] [5 0] [6 1] [3 2] [4 2] [6 2] [3 3] [3 4]]]
-         (make-block screen x (+ y 3) block-img))
-       zombie
-       name-label
-       (create-character "Explorer_walking.png" :explorer 4 screen block-img)]))
+      [ground
+       walls
+       (generate-zombies screen block-img)
+       (create-character "Explorer_walking.png" :explorer [10 7] 4 screen block-img)]))
 
   :on-key-down
   (fn [screen entities]
@@ -204,14 +279,22 @@
   :on-render
   (fn [screen entities]
     (clear!)
-    (let [all-character-bodies (filter :character-body? entities)
+    (let [explorer (find-first #(= (:id %) :explorer) entities)
+          all-character-bodies (filter :character-body? entities)
           character-map (reduce (fn [m b] (assoc m (:id b) b)) {}
                                 all-character-bodies)
           entities (->> (for [entity entities]
                           (cond (:character? entity)
                                 (animate entity ((:id entity) character-map) screen)
+
                                 (:character-body? entity)
-                                (move entity)
+                                (if (= (:id entity) :explorer)
+                                  (move entity)
+                                  (do-ai entity explorer))
+
+                                (:zombie-label? entity)
+                                (track-label entity ((:id entity) character-map))
+
                                 :else entity))
                         (step! screen))
           visible-entities (filter (complement :invisible?) entities)]
