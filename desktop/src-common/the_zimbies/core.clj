@@ -118,6 +118,7 @@
                             (texture (aget tiles 0 n)))
           block-img (texture "Block.gif")
           standing (second explorer-images)
+          sand (texture "ground.png")
           explorer (assoc standing
                           :standing standing
                           :walk-left (animation 0.2 explorer-images)
@@ -128,8 +129,11 @@
                           :physics-offset [-0.8 0]
                           :angle 0)]
       (width! screen game-w)
-      [(for [[x y] [[3 0] [4 0] [5 0] [6 1] [3 2] [4 2] [6 2] [3 3] [3 4]]]
-         (make-block screen x y block-img))
+      [(for [x (range 25)
+             y (range 15)]
+         (assoc sand :width 1 :height 1 :x x :y (+ y 3)))
+       (for [[x y] [[3 0] [4 0] [5 0] [6 1] [3 2] [4 2] [6 2] [3 3] [3 4]]]
+         (make-block screen x (+ y 3) block-img))
        (doto (assoc block-img
                     :width 1, :height 1,
                     :explorer-body? true
