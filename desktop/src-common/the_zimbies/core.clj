@@ -16,6 +16,10 @@
 
 (def ^:const pixels-per-tile 32)
 
+(def zombie-names ["Joe" "Bob" "Jack" "Mike" "Tom" "Dave" "Paul" "John" "Mark"
+                   "Andrew" "Richard" "Peter" "Susan" "Christine" "Janet" "Margaret"
+                   "Sarah" "Claire" "Mary" "Hannah" "Sophie" "Laura" "Dorothy" "Joyce"])
+
 (defn create-rect-body!
   [screen width height]
   (let [body (add-body! screen (body-def :static))]
@@ -69,14 +73,10 @@
       (doto explorer
         (body! :set-linear-velocity 0 0))
       (case last-key
-        :up (doto explorer
-              (body! :set-linear-velocity 0 speed))
-        :down (doto explorer
-                (body! :set-linear-velocity 0 (- speed)))
-        :left (doto explorer
-                  (body! :set-linear-velocity (- speed) 0))
-        :right (doto explorer
-                 (body! :set-linear-velocity speed 0))
+        :up (doto explorer (body! :set-linear-velocity 0 speed))
+        :down (doto explorer (body! :set-linear-velocity 0 (- speed)))
+        :left (doto explorer (body! :set-linear-velocity (- speed) 0))
+        :right (doto explorer (body! :set-linear-velocity speed 0))
         explorer))))
 
 (defn copy-position [explorer body]
@@ -104,13 +104,16 @@
                     (:angle explorer))]
     (assoc explorer :angle new-angle)))
 
-(defn create-character [filename [sprite-width sprite-height] frames physics-offset
-                        screen debug-texture]
-  (let [sheet (texture "Zombie_walking_small.png")
-        tiles (texture! sheet :split sprite-width sprite-height)
+(defn create-character [filename frames screen debug-texture]
+  (let [sheet (texture filename)
+        sheet-width (texture! sheet :get-region-width)
+        sheet-height (texture! sheet :get-region-height)
+        tiles (texture! sheet :split (/ sheet-width frames) sheet-height)
         explorer-images (for [n (range frames)]
                           (texture (aget tiles 0 n)))
         standing (second explorer-images)
+        physics-offset [(/ (- 1 (entity-width standing)) 2)
+                        (/ (- 1 (entity-height standing)) 2)]
         explorer (assoc standing
                         :standing standing
                         :walk-left (animation 0.2 explorer-images)
@@ -145,8 +148,7 @@
          (assoc sand :width 1 :height 1 :x x :y (+ y 3)))
        (for [[x y] [[3 0] [4 0] [5 0] [6 1] [3 2] [4 2] [6 2] [3 3] [3 4]]]
          (make-block screen x (+ y 3) block-img))
-       (create-character "Zombie_walking_small.png" [80 32] 8 [-0.8 0]
-                         screen block-img)]))
+       (create-character "Explorer_walking.png" 4 screen block-img)]))
 
   :on-key-down
   (fn [screen entities]
