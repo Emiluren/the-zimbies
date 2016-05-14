@@ -104,7 +104,7 @@
                     (:angle explorer))]
     (assoc explorer :angle new-angle)))
 
-(defn create-character [filename frames screen debug-texture]
+(defn create-character [filename id frames screen debug-texture]
   (let [sheet (texture filename)
         sheet-width (texture! sheet :get-region-width)
         sheet-height (texture! sheet :get-region-height)
@@ -114,23 +114,26 @@
         standing (second explorer-images)
         physics-offset [(/ (- 1 (entity-width standing)) 2)
                         (/ (- 1 (entity-height standing)) 2)]
-        explorer (assoc standing
-                        :standing standing
-                        :walk-left (animation 0.2 explorer-images)
-                        :width (entity-width standing)
-                        :height (entity-height standing)
-                        :explorer? true
-                        :pressed-keys ()
-                        :physics-offset physics-offset
-                        :angle 0)]
+        character (assoc standing
+                         :id id
+                         :standing standing
+                         :walk-left (animation 0.2 explorer-images)
+                         :width (entity-width standing)
+                         :height (entity-height standing)
+                         :character? true
+                         :pressed-keys ()
+                         :physics-offset physics-offset
+                         :angle 0)]
     [(doto (assoc debug-texture
+                  :id id
+                  :character-body? true
                   :width 1, :height 1,
-                  :explorer-body? true
+                  :character-body? true
                   :pressed-keys ()
                   :invisible? true
                   :body (create-character-body! screen 0.45))
        (body-position! 3 10 0))
-     explorer]))
+     character]))
 
 (defscreen main-screen
   :on-show
@@ -148,7 +151,7 @@
          (assoc sand :width 1 :height 1 :x x :y (+ y 3)))
        (for [[x y] [[3 0] [4 0] [5 0] [6 1] [3 2] [4 2] [6 2] [3 3] [3 4]]]
          (make-block screen x (+ y 3) block-img))
-       (create-character "Explorer_walking.png" 4 screen block-img)]))
+       (create-character "Explorer_walking.png" :explorer 4 screen block-img)]))
 
   :on-key-down
   (fn [screen entities]
@@ -156,7 +159,7 @@
     (for [entity entities]
       (let [new-key (key-code-to-dir (:key screen))]
         (if (and new-key
-                 (or (:explorer? entity) (:explorer-body? entity))
+                 (= :explorer (:id entity))
                  (not (some #{new-key} (:pressed-keys entity))))
           (-> entity
               (update :pressed-keys conj new-key)
@@ -167,7 +170,7 @@
   (fn [screen entities]
     ;; Remove the pressed key from the explorer's list
     (for [entity entities]
-      (if (or (:explorer? entity) (:explorer-body? entity))
+      (if (= :explorer (:id entity))
         (let [released (key-code-to-dir (:key screen))]
           (-> entity
               (update :pressed-keys #(remove #{released} %))
@@ -178,10 +181,10 @@
   :on-render
   (fn [screen entities]
     (clear!)
-    (let [explorer-body (find-first :explorer-body? entities)
+    (let [explorer-body (find-first :character-body? entities)
           entities (->> (for [entity entities]
-                          (cond (:explorer? entity) (animate entity explorer-body screen)
-                                (:explorer-body? entity) (move entity)
+                          (cond (:character? entity) (animate entity explorer-body screen)
+                                (:character-body? entity) (move entity)
                                 :else entity))
                         (step! screen))
           visible-entities (filter (complement :invisible?) entities)]
