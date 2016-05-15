@@ -132,8 +132,7 @@
                      (reset! hit-fixture fixture)
                      fraction))]
     (box-2d! screen :ray-cast callback zombie-pos explorer-pos)
-    (if (= (fixture! @hit-fixture :get-body) (:body explorer))
-      (println (:id zombie) "can see player"))))
+    (= (fixture! @hit-fixture :get-body) (:body explorer))))
 
 (defn start-idling [zombie]
   ;; Idle for between 0 and 1 second
@@ -150,7 +149,8 @@
 (defn start-chasing [zombie explorer]
   (-> zombie
       (assoc :state :chasing
-             :last-saw-player (body! explorer :get-position))))
+             :last-saw-player (body! explorer :get-position)
+             :time-since-saw-player 0)))
 
 (defn process-idle [screen zombie explorer]
   (cond (can-see-player screen zombie explorer)
@@ -175,16 +175,23 @@
         :else (start-idling zombie)))
 
 (defn process-chasing [screen zombie explorer]
-  (let [zombie
-        (cond (can-see-player screen zombie explorer)
-              (assoc zombie :last-saw-player (body! explorer :get-position))
+  (let [toward-player (doto (vector-2 0 0)
+                        (vector-2! :add (body! explorer :get-position))
+                        (vector-2! :sub (body! zombie :get-position))
+                        (vector-2! :nor)
+                        (vector-2! :scl 2.0))
+        zombie (cond (can-see-player screen zombie explorer)
+                     (assoc zombie
+                            :last-saw-player (body! explorer :get-position)
+                            :time-since-saw-player 0
+                            :direction (vector-2! toward-player :angle))
 
-              (< (.dst (body! zombie :get-position) (:last-saw-player zombie)) 0.1)
-              (start-idling zombie)
+                     (> (:time-since-saw-player zombie) 60)
+                     (start-idling zombie)
 
-              :else zombie)]
+                     :else (update zombie :time-since-saw-player inc))]
       (doto zombie
-        (body! :set-linear-velocity))))
+        (body! :set-linear-velocity toward-player))))
 
 (defn do-ai [screen zombie explorer]
   (case (:state zombie)
