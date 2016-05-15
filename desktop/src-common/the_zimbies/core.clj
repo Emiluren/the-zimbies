@@ -108,13 +108,13 @@
 (defn set-scale-to-all [textures]
   (map #(assoc % :width (entity-width %) :height (entity-height %)) textures))
 
-(defn create-name-labels []
+(defn create-name-labels [filename]
   (zipmap
    zombie-names
    (set-scale-to-all
     (for [n (range 24)]
       (texture (aget
-                (texture! (texture "names.png") :split 120 25)
+                (texture! (texture filename) :split 120 25)
                 n 0))))))
 
 (defn pick-direction [zombie]
@@ -201,12 +201,17 @@
     zombie))
 
 (defn create-zombie [name pos screen debug-img]
-  (let [name-label (name (create-name-labels))
+  (let [name-label (name (create-name-labels "names.png"))
+        status-label (name (create-name-labels "white_names.png"))
         [zombie-body zombie-animation] (create-character "Zombie_walking_small.png"
-                                                         name pos 8 screen debug-img)]
+                                                         name pos 8 screen debug-img)
+        [x y] pos
+        status-x (if (= x 7) 1 14)
+        status-y (if (= y 7) 0 2)]
     [(start-idling (assoc zombie-body :zombie? true))
      (assoc zombie-animation :zombie? true)
-     (assoc name-label :zombie-label? true :id name)]))
+     (assoc name-label :zombie-label? true :id name)
+     (assoc status-label :x status-x :y status-y :white-label? true :id name)]))
 
 (defn generate-zombies [screen debug-img]
   (for [[pos name] (map vector [[7 7] [16 7] [7 14] [16 14]]
