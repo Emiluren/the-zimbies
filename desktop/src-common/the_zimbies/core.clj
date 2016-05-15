@@ -21,6 +21,8 @@
                    :Andrew :Richard :Peter :Susan :Christine :Janet :Margaret
                    :Sarah :Claire :Mary :Hannah :Sophie :Laura :Dorothy :Joyce])
 
+(def start-health 600)
+
 (defn spy [v]
   (println v)
   (println)
@@ -193,25 +195,34 @@
       (doto zombie
         (body! :set-linear-velocity toward-player))))
 
-(defn do-ai [screen zombie explorer]
-  (case (:state zombie)
-    :idle (process-idle screen zombie explorer)
-    :walking (process-walking screen zombie explorer)
-    :chasing (process-chasing screen zombie explorer)
+(defn do-ai [zombie screen explorer]
+  (if (> (:health zombie) 0)
+    (case (:state zombie)
+      :idle (process-idle screen zombie explorer)
+      :walking (process-walking screen zombie explorer)
+      :chasing (process-chasing screen zombie explorer)
+      zombie)
+    (doto zombie (body! :set-linear-velocity 0 0))))
+
+(defn update-health [zombie]
+  (if (> (:health zombie) 0)
+    (update zombie :health dec)
     zombie))
 
 (defn create-zombie [name pos screen debug-img]
   (let [name-label (name (create-name-labels "names.png"))
         status-label (name (create-name-labels "white_names.png"))
+        health-bar (load-texture "health_bar.png")
         [zombie-body zombie-animation] (create-character "Zombie_walking_small.png"
                                                          name pos 8 screen debug-img)
         [x y] pos
         status-x (if (= x 7) 1 14)
-        status-y (if (= y 7) 0 2)]
-    [(start-idling (assoc zombie-body :zombie? true))
-     (assoc zombie-animation :zombie? true)
+        status-y (if (= y 7) 0.5 2)]
+    [(start-idling (assoc zombie-body :zombie? true :health start-health))
+     (assoc zombie-animation :zombie? true :dead (load-texture "dead_zombie.png"))
      (assoc name-label :zombie-label? true :id name)
-     (assoc status-label :x status-x :y status-y :white-label? true :id name)]))
+     (assoc status-label :x status-x :y status-y :white-label? true :id name)
+     (assoc health-bar :health-bar? true :x (+ status-x 4) :y (+ status-y 0.1) :id name)]))
 
 (defn generate-zombies [screen debug-img]
   (for [[pos name] (map vector [[7 7] [16 7] [7 14] [16 14]]
@@ -244,9 +255,14 @@
         character)
       (copy-position body)
       (merge
-       (if (.isZero (body! body :get-linear-velocity))
-         standing
-         (animation->texture screen walk-left)))))
+       (cond (= 0 (get body :health start-health))
+             (:dead character)
+
+             (.isZero (body! body :get-linear-velocity))
+             standing
+
+             :else
+             (animation->texture screen walk-left)))))
 
 (defn track-label [label body]
   (let [pos (body! body :get-position)
@@ -262,6 +278,9 @@
                     :down 90
                     (:angle character))]
     (assoc character :angle new-angle)))
+
+(defn update-health-bar [bar zombie]
+  (assoc bar :width (* (/ (:health zombie) start-health) 4)))
 
 (defscreen main-screen
   :on-show
@@ -322,12 +341,21 @@
                                 (animate entity ((:id entity) character-map) screen)
 
                                 (:character-body? entity)
-                                (if (= (:id entity) :explorer)
-                                  (move entity)
-                                  (do-ai screen entity explorer))
+                                (cond (= (:id entity) :explorer)
+                                      (move entity)
+
+                                      (:zombie? entity)
+                                      (-> entity
+                                          (do-ai screen explorer)
+                                          update-health)
+
+                                      :else entity)
 
                                 (:zombie-label? entity)
                                 (track-label entity ((:id entity) character-map))
+
+                                (:health-bar? entity)
+                                (update-health-bar entity ((:id entity) character-map))
 
                                 :else entity))
                         (step! screen))
