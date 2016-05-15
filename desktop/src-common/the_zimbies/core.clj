@@ -4,7 +4,8 @@
             [play-clj.g2d :refer :all]
             [play-clj.g2d-physics :refer :all]
             [play-clj.math :refer :all]
-            [play-clj.repl :reger :all]))
+            [play-clj.repl :refer :all])
+  (:import (com.badlogic.gdx.physics.box2d RayCastCallback)))
 
 ;; to restart game
 ;; (in-ns 'the-zimbies.core)
@@ -122,8 +123,17 @@
            :direction (rand-int 360)
            :walk-time (rand-int 240))))
 
-(defn can-see-player [zombie explorer]
-  false)
+(defn can-see-player [screen zombie explorer]
+  (let [zombie-pos (body! zombie :get-position)
+        explorer-pos (body! explorer :get-position)
+        hit-fixture (atom nil)
+        callback (reify RayCastCallback
+                   (reportRayFixture [this fixture point normal fraction]
+                     (reset! hit-fixture fixture)
+                     fraction))]
+    (box-2d! screen :ray-cast callback zombie-pos explorer-pos)
+    (if (= (fixture! @hit-fixture :get-body) (:body explorer))
+      (println (:id zombie) "can see player"))))
 
 (defn start-idling [zombie]
   ;; Idle for between 0 and 1 second
@@ -142,8 +152,8 @@
       (assoc :state :chasing
              :last-saw-player (body! explorer :get-position))))
 
-(defn process-idle [zombie explorer]
-  (cond (can-see-player zombie explorer)
+(defn process-idle [screen zombie explorer]
+  (cond (can-see-player screen zombie explorer)
         (start-chasing zombie explorer)
 
         (> (:wait-time zombie) 0)
@@ -151,8 +161,8 @@
 
         :else (start-walking zombie)))
 
-(defn process-walking [zombie explorer]
-  (cond (can-see-player zombie explorer)
+(defn process-walking [screen zombie explorer]
+  (cond (can-see-player screen zombie explorer)
         (start-chasing zombie explorer)
 
         (> (:walk-time zombie) 0)
@@ -164,14 +174,23 @@
 
         :else (start-idling zombie)))
 
-(defn process-chasing [zombie explorer]
-  zombie)
+(defn process-chasing [screen zombie explorer]
+  (let [zombie
+        (cond (can-see-player screen zombie explorer)
+              (assoc zombie :last-saw-player (body! explorer :get-position))
 
-(defn do-ai [zombie explorer]
+              (< (.dst (body! zombie :get-position) (:last-saw-player zombie)) 0.1)
+              (start-idling zombie)
+
+              :else zombie)]
+      (doto zombie
+        (body! :set-linear-velocity))))
+
+(defn do-ai [screen zombie explorer]
   (case (:state zombie)
-    :idle (process-idle zombie explorer)
-    :walking (process-walking zombie explorer)
-    :chasing (process-chasing zombie explorer)
+    :idle (process-idle screen zombie explorer)
+    :walking (process-walking screen zombie explorer)
+    :chasing (process-chasing screen zombie explorer)
     zombie))
 
 (defn create-zombie [name pos screen debug-img]
@@ -252,7 +271,7 @@
       [ground
        walls
        (generate-zombies screen block-img)
-       (create-character "Explorer_walking.png" :explorer [10 7] 4 screen block-img)]))
+       (create-character "Explorer_walking.png" :explorer [0 3] 4 screen block-img)]))
 
   :on-key-down
   (fn [screen entities]
@@ -293,7 +312,7 @@
                                 (:character-body? entity)
                                 (if (= (:id entity) :explorer)
                                   (move entity)
-                                  (do-ai entity explorer))
+                                  (do-ai screen entity explorer))
 
                                 (:zombie-label? entity)
                                 (track-label entity ((:id entity) character-map))
