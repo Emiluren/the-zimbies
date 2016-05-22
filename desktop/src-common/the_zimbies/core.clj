@@ -21,7 +21,7 @@
                    :Andrew :Richard :Peter :Susan :Christine :Janet :Margaret
                    :Sarah :Claire :Mary :Hannah :Sophie :Laura :Dorothy :Joyce])
 
-(def start-health 600)
+(def start-health 1500)
 
 (defn spy [v]
   (println v)
@@ -229,6 +229,14 @@
                         (take 4 (shuffle zombie-names)))]
     (create-zombie name pos screen debug-img)))
 
+(defn spawn-brain [screen]
+  (let [x (rand-int 25)
+        y (+ 3 (rand-int 15))
+        body (create-character-body! screen 0.45)]
+    (doto body
+      (body-position! x y 0))
+    (assoc (load-texture "brain.png") :body body :brain? true :x x :y y)))
+
 (defn move [character]
   (let [last-key (first (:pressed-keys character))]
     (if (nil? last-key)
@@ -282,6 +290,18 @@
 (defn update-health-bar [bar zombie]
   (assoc bar :width (* (/ (:health zombie) start-health) 4)))
 
+(defn random-block-positions []
+  (for [n (range 40)]
+    [(rand-int 25) (rand-int 15)]))
+
+(defn remove-brain [brain zombie entities]
+  (println (:id zombie) "found a brain!")
+  (for [entity (remove :brain? entities)]
+    (cond (= (:id zombie) (:id entity))
+          (assoc entity :health (+ 1000 (:health zombie)))
+
+          :else entity)))
+
 (defscreen main-screen
   :on-show
   (fn [screen entities]
@@ -296,11 +316,13 @@
           ground (for [x (range 25)
                        y (range 15)]
                    (assoc sand :width 1 :height 1 :x x :y (+ y 3)))
-          walls (for [[x y] [[3 0] [4 0] [5 0] [6 1] [3 2] [4 2] [6 2] [3 3] [3 4]]]
+          walls (for [[x y] (random-block-positions)]
                   (make-block screen x (+ y 3) block-img))]
       (width! screen game-w)
+      (add-timer! screen :brain-spawner 4 3)
       [ground
        walls
+       ;; (load-texture "brain.png")
        (generate-zombies screen block-img)
        (create-character "Explorer_walking.png" :explorer [0 3] 4 screen block-img)]))
 
@@ -329,6 +351,29 @@
                   (set-angle updated (first (:pressed-keys updated))))))
         entity)))
 
+  :on-timer
+  (fn [screen entities]
+    (case (:id screen)
+      :brain-spawner (let [brains (filter :brain? entities)]
+                       (if (< (count brains) 4)
+                         (conj entities (spawn-brain screen))))))
+
+  :on-begin-contact
+  (fn [screen entities]
+    (let [contact (:contact screen)
+          bodyA (fixture! (.getFixtureA contact) :get-body)
+          bodyB (fixture! (.getFixtureB contact) :get-body)
+          explorer (find-first #(= (:id %) :explorer) entities)
+          entityA (find-first #(= (:body %) bodyA) entities)
+          entityB (find-first #(= (:body %) bodyB) entities)]
+      (cond (and (:brain? entityA) (:zombie? entityB))
+            (remove-brain entityA entityB entities)
+
+            (and (:zombie? entityA) (:brain? entityB))
+            (remove-brain entityB entityA entities)
+
+            :else entities)))
+
   :on-render
   (fn [screen entities]
     (clear!)
@@ -353,6 +398,10 @@
 
                                 (:zombie-label? entity)
                                 (track-label entity ((:id entity) character-map))
+
+                                (:brain? entity)
+                                (doto entity
+                                  (body! :set-linear-velocity 0 0))
 
                                 (:health-bar? entity)
                                 (update-health-bar entity ((:id entity) character-map))
